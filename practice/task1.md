@@ -1,3 +1,6 @@
+#Схема сервиса
+![Схема](image.png)
+
 # Описание компонентов
 
 ## 1. Data Ingestion (Producers)
