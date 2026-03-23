@@ -95,4 +95,80 @@
 
 ## Схема данных для БД
 
-![Схема](er-дифграмма.png)
+```mermaid
+    erDiagram
+        users {
+            bigint id PK
+            bigint telegram_id
+            timestamp created_at
+        }
+
+        photos {
+            bigint id PK
+            bigint user_id FK
+            string url
+            boolean is_main
+        }
+
+        profiles {
+            bigint id PK
+            bigint user_id FK
+            string name
+            int age
+            string gender
+            text bio
+            string city
+            float latitude
+            float longitude
+        }
+
+        preferences {
+            bigint user_id PK,FK
+            string preferred_gender
+            int min_age
+            int max_age
+            int radius_km
+        }
+
+        interactions {
+            bigint id PK
+            bigint from_user_id FK
+            bigint to_user_id FK
+            string action
+            timestamp created_at
+        }
+
+        matches {
+            bigint id PK
+            bigint user1_id FK
+            bigint user2_id FK
+            timestamp created_at
+        }
+
+        messages {
+            bigint id PK
+            bigint match_id FK
+            bigint sender_id FK
+            text text
+            timestamp updated_at
+        }
+
+        ratings {
+            bigint user_id PK,FK
+            float primary_score
+            float behavior_score
+            float final_score
+            timestamp updated_at
+        }
+
+        users ||--o{ photos : "has"
+        users ||--|| profiles : "has"
+        users ||--|| preferences : "has"
+        users ||--o{ interactions : "from"
+        users ||--o{ interactions : "to"
+        users ||--o{ matches : "as user1"
+        users ||--o{ matches : "as user2"
+        users ||--o{ messages : "sends"
+        users ||--|| ratings : "has"
+        matches ||--o{ messages : "contains"
+```
