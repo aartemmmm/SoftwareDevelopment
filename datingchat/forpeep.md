@@ -98,7 +98,7 @@
 Сервисы обмениваются данными через API и очередь сообщений, используют общую базу данных, кэш Redis для ускорения работы и хранилище Minio для изображений.  
 Фоновые задачи выполняются через Celery.
 
-![Схема](forpeep_Diagram.png)
+![Схема](Forpeep Diagram.png)
 
   
 
@@ -128,8 +128,6 @@
             string gender
             text bio
             string city
-            float latitude
-            float longitude
         }
 
         preferences {
