@@ -6,18 +6,18 @@
 
 ```mermaid
   flowchart TD
-    subgraph Normal_Path["Обычный путь"]
-        P[Producer] --> B[Broker (queue A)]
-        B --> W[Worker]
-        W --> A[Audit (DB)]
-        A -->|ACK| B
-    end
+      subgraph Normal_Path["Обычный путь"]
+          P[Producer] --> B[Broker - queue A]
+          B --> W[Worker]
+          W --> A[Audit DB]
+          A -->|ACK| B
+      end
 
-    subgraph Error_Path["Путь ошибки"]
-        B2[Broker (queue A)] --> W2[Worker]
-        W2 -->|Ошибка| R[Retry N раз]
-        R --> DLQ[DLQ (Dead Letter Queue)]
-    end
+      subgraph Error_Path["Путь ошибки"]
+          B2[Broker - queue A] --> W2[Worker]
+          W2 -->|Ошибка| R[Retry N раз]
+          R --> DLQ[Dead Letter Queue]
+      end
 ```
 
 
