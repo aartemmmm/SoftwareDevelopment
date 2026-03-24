@@ -2,10 +2,10 @@
 
 ![Схема](task2_scheme.png)
 
-# Схема потоков сообщенийflowchart TD
+# Схема потоков сообщений
 
 ```mermaid
-    flowchart TD
+  flowchart TD
     subgraph Normal_Path["Обычный путь"]
         P[Producer] --> B[Broker (queue A)]
         B --> W[Worker]
