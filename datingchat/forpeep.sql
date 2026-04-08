@@ -12,8 +12,6 @@ CREATE TABLE profiles (
     gender VARCHAR(10),
     bio TEXT,
     city VARCHAR(100),
-    latitude FLOAT,
-    longitude FLOAT
 );
 
 CREATE TABLE photos (
