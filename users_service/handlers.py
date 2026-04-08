@@ -25,9 +25,13 @@ class RegStates(StatesGroup):
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
+    tg_id = message.from_user.id if message.from_user else None
+    if tg_id is None:
+        return
+
     async with async_session() as session:
         user_result = await session.execute(
-            select(User).where(User.telegram_id == message.from_user.id)
+            select(User).where(User.telegram_id == tg_id)
         )
         user = user_result.scalar_one_or_none()
 
@@ -61,19 +65,24 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "update")
 async def cb_update(callback: CallbackQuery, state: FSMContext) -> None:
-    await callback.message.answer("Введи новое имя:")
+    if callback.message:
+        await callback.message.answer("Введи новое имя:")
     await callback.answer()
     await state.set_state(RegStates.name)
 
 
 @router.callback_query(F.data == "keep")
 async def cb_keep(callback: CallbackQuery) -> None:
-    await callback.message.answer("Хорошо, анкета не изменена.")
+    if callback.message:
+        await callback.message.answer("Хорошо, анкета не изменена.")
     await callback.answer()
 
 
 @router.message(RegStates.name)
 async def reg_name(message: Message, state: FSMContext) -> None:
+    if not message.text:
+        await message.answer("Отправь имя текстом:")
+        return
     await state.update_data(name=message.text.strip())
     await message.answer("Сколько тебе лет?")
     await state.set_state(RegStates.age)
@@ -81,11 +90,12 @@ async def reg_name(message: Message, state: FSMContext) -> None:
 
 @router.message(RegStates.age)
 async def reg_age(message: Message, state: FSMContext) -> None:
-    if not message.text.isdigit() or not (18 <= int(message.text) <= 99):
+    text = message.text or ""
+    if not text.isdigit() or not (18 <= int(text) <= 99):
         await message.answer("Введи корректный возраст (число от 18 до 99):")
         return
 
-    await state.update_data(age=int(message.text))
+    await state.update_data(age=int(text))
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -99,18 +109,22 @@ async def reg_age(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(RegStates.gender)
 async def reg_gender(callback: CallbackQuery, state: FSMContext) -> None:
+    gender = callback.data or "male"
+    tg_id = callback.from_user.id if callback.from_user else None
+    if tg_id is None:
+        return
+
     data = await state.get_data()
-    gender = callback.data
 
     async with async_session() as session:
         async with session.begin():
             user_result = await session.execute(
-                select(User).where(User.telegram_id == callback.from_user.id)
+                select(User).where(User.telegram_id == tg_id)
             )
             user = user_result.scalar_one_or_none()
 
             if user is None:
-                user = User(telegram_id=callback.from_user.id)
+                user = User(telegram_id=tg_id)
                 session.add(user)
                 await session.flush()
                 session.add(Profile(
@@ -138,4 +152,5 @@ async def reg_gender(callback: CallbackQuery, state: FSMContext) -> None:
 
     await state.clear()
     await callback.answer()
-    await callback.message.answer("Анкета создана! Добро пожаловать.")
+    if callback.message:
+        await callback.message.answer("Анкета создана! Добро пожаловать.")
