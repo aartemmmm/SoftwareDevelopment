@@ -30,7 +30,6 @@ class Order(Base):
     orderdate:   Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     totalamount: Mapped[Decimal]  = mapped_column(Numeric(10, 2), default=0)
 
-    # Связь: order.items → список OrderItem
     items: Mapped[list["OrderItem"]] = relationship(back_populates="order")
 
 

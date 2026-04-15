@@ -1,5 +1,5 @@
 from app.database import engine, Base
-from app.models import Customer, Product  # noqa: F401 — нужен импорт для create_all
+from app.models import Customer, Product  
 from app.crud import place_order, update_customer_email, add_product
 from sqlalchemy.orm import Session
 
@@ -23,10 +23,8 @@ def seed(session: Session):
 
 
 if __name__ == "__main__":
-    # Создаём таблицы (если их нет)
     Base.metadata.create_all(engine)
 
-    # Заполняем тестовыми данными
     with Session(engine) as s:
         seed(s)
 

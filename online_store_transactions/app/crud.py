@@ -4,20 +4,14 @@ from app.database import SessionLocal
 from app.models import Customer, Product, Order, OrderItem
 
 
-# ---------------------------------------------------------------
-# Сценарий 1: Оформление заказа
-# items — список кортежей (product_id, quantity)
-# ---------------------------------------------------------------
 def place_order(customer_id: int, items: list[tuple[int, int]]):
     session = SessionLocal()
     try:
-        # Создаём заказ с нулевой суммой
         order = Order(customerid=customer_id, totalamount=0)
         session.add(order)
-        session.flush()  # нужен flush, чтобы получить order.orderid до commit
+        session.flush()  
         print(f"Создан заказ #{order.orderid}")
 
-        # Добавляем каждую позицию заказа
         for product_id, quantity in items:
             product = session.get(Product, product_id)
             if product is None:
@@ -33,7 +27,6 @@ def place_order(customer_id: int, items: list[tuple[int, int]]):
             session.add(item)
             print(f"  {product.productname} x{quantity} = {subtotal} руб.")
 
-        # Считаем сумму всех Subtotal и обновляем TotalAmount
         session.flush()
         total = session.execute(
             select(func.sum(OrderItem.subtotal)).where(OrderItem.orderid == order.orderid)
@@ -50,9 +43,6 @@ def place_order(customer_id: int, items: list[tuple[int, int]]):
         session.close()
 
 
-# ---------------------------------------------------------------
-# Сценарий 2: Обновление email клиента
-# ---------------------------------------------------------------
 def update_customer_email(customer_id: int, new_email: str):
     session = SessionLocal()
     try:
@@ -71,9 +61,6 @@ def update_customer_email(customer_id: int, new_email: str):
         session.close()
 
 
-# ---------------------------------------------------------------
-# Сценарий 3: Добавление нового продукта
-# ---------------------------------------------------------------
 def add_product(name: str, price: float):
     session = SessionLocal()
     try:

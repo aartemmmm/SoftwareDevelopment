@@ -10,11 +10,8 @@ DB_PASS = os.getenv("DB_PASS", "Artem2502")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-# Движок — это соединение с БД
 engine = create_engine(DATABASE_URL)
 
-# Фабрика сессий — через сессию делаем все запросы
 SessionLocal = sessionmaker(bind=engine)
 
-# Базовый класс для всех ORM-моделей
 Base = declarative_base()
