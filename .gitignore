@@ -22,3 +22,5 @@ env/
 dist/
 build/
 *.egg-info/
+
+online_store_transactions/
