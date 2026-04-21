@@ -1,0 +1,2 @@
+broker,message_size_bytes,target_rate_msg_per_sec,duration_sec,sent,received,processed,lost,producer_errors,consumer_errors,producer_throughput_msg_per_sec,consumer_throughput_msg_per_sec,latency_avg_ms,latency_p95_ms,latency_max_ms
+rabbitmq,128,10000,60,424864,424862,424862,2,0,0,7081.05,7045.42,2.935,29.685,60.751

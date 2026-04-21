@@ -1,0 +1,17 @@
+{
+  "broker": "rabbitmq",
+  "message_size_bytes": 128,
+  "target_rate_msg_per_sec": 1000,
+  "duration_sec": 60,
+  "sent": 49239,
+  "received": 49239,
+  "processed": 49239,
+  "lost": 0,
+  "producer_errors": 0,
+  "consumer_errors": 0,
+  "producer_throughput_msg_per_sec": 820.64,
+  "consumer_throughput_msg_per_sec": 816.46,
+  "latency_avg_ms": 0.753,
+  "latency_p95_ms": 0.975,
+  "latency_max_ms": 41.502
+}
