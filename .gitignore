@@ -9,8 +9,12 @@ venv/
 env/
 
 .env
+.env.*
+!.env.example
 
+# macOS
 .DS_Store
+**/.DS_Store
 
 .idea/
 .vscode/
@@ -23,4 +27,10 @@ dist/
 build/
 *.egg-info/
 
-online_store_transactions/
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db
+celerybeat.pid
+
+# MinIO local data (если запускаешь без Docker)
+minio_data/
