@@ -1,6 +1,3 @@
-"""
-Storage Module — загрузка фотографий в MinIO (S3-совместимое хранилище).
-"""
 from __future__ import annotations
 
 import asyncio

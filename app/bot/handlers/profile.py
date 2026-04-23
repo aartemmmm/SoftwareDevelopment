@@ -1,6 +1,3 @@
-"""
-Profile handler — просмотр и редактирование своей анкеты.
-"""
 from __future__ import annotations
 
 import io

@@ -1,12 +1,3 @@
-"""
-Cache Module — кэширование предварительно ранжированной ленты в Redis.
-
-Алгоритм сессии:
-  1. При открытии ленты: получаем первый профиль через полный путь ранжирования,
-     одновременно подгружаем ещё 9 анкет в Redis.
-  2. Последующие анкеты берём из кэша (O(1)).
-  3. На последней анкете из 10 круг повторяется.
-"""
 from __future__ import annotations
 
 import json
@@ -42,10 +33,6 @@ async def load_feed_cache(
 
 
 async def pop_from_feed(user_id: uuid.UUID, redis: Redis) -> Optional[uuid.UUID]:
-    """
-    Извлечь следующий ID анкеты из кэша (FIFO).
-    Возвращает None если кэш пуст.
-    """
     raw = await redis.get(_key(user_id))
     if not raw:
         return None

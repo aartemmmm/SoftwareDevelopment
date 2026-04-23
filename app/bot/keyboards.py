@@ -11,10 +11,6 @@ from aiogram.types import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Callback factories
-# ---------------------------------------------------------------------------
-
 class FeedAction(CallbackData, prefix="feed"):
     action: str       # "like" | "skip"
     target_id: str    # str(uuid)
@@ -23,10 +19,6 @@ class FeedAction(CallbackData, prefix="feed"):
 class EditField(CallbackData, prefix="edit"):
     field: str        # "name" | "age" | "gender" | "city" | "bio" | "prefs"
 
-
-# ---------------------------------------------------------------------------
-# Reply keyboards
-# ---------------------------------------------------------------------------
 
 def main_menu_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
@@ -40,10 +32,6 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
         resize_keyboard=True,
     )
 
-
-# ---------------------------------------------------------------------------
-# Inline keyboards
-# ---------------------------------------------------------------------------
 
 def gender_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(

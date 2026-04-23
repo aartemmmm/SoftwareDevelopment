@@ -1,15 +1,3 @@
-"""
-Matching Module — формирование ленты анкет, обработка лайков/пропусков, мэтчи.
-
-Лента генерируется с учётом:
-  - предпочтений пользователя (пол, возраст)
-  - исключения уже просмотренных анкет
-  - рейтинга (final_score DESC)
-
-Кэш-стратегия:
-  При открытии ленты первая анкета отдаётся сразу,
-  остальные 9 подгружаются в Redis. На последней анкете цикл повторяется.
-"""
 from __future__ import annotations
 
 import logging
@@ -33,13 +21,6 @@ async def _get_candidate_ids(
     session: AsyncSession,
     limit: int = _BATCH_SIZE,
 ) -> list[uuid.UUID]:
-    """
-    Возвращает список user_id кандидатов для показа:
-      - не сам пользователь
-      - не взаимодействовавшие ранее
-      - соответствующие предпочтениям
-      - отсортированные по final_score DESC
-    """
     prefs = await session.scalar(
         select(Preferences).where(Preferences.user_id == user_id)
     )
@@ -75,10 +56,6 @@ async def get_next_profile_id(
     session: AsyncSession,
     redis: Redis,
 ) -> Optional[uuid.UUID]:
-    """
-    Основной метод: вернуть следующий ID профиля для показа пользователю.
-    При пустом кэше — сформировать новый батч и положить хвост в Redis.
-    """
     cached_id = await cache_module.pop_from_feed(user_id, redis)
     if cached_id:
         return cached_id
@@ -87,7 +64,6 @@ async def get_next_profile_id(
     if not candidates:
         return None
 
-    # Первый — отдаём сразу; остальные — в кэш
     if len(candidates) > 1:
         await cache_module.load_feed_cache(user_id, candidates[1:], redis)
 
@@ -100,11 +76,6 @@ async def record_interaction(
     action: str,
     session: AsyncSession,
 ) -> Optional[Match]:
-    """
-    Сохранить взаимодействие (like/skip).
-    При взаимном лайке — создать мэтч.
-    Возвращает объект Match при совпадении, иначе None.
-    """
     interaction = Interaction(
         from_user_id=from_user_id,
         to_user_id=to_user_id,

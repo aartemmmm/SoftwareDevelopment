@@ -1,9 +1,3 @@
-"""
-Этап 2 — регистрация пользователя.
-
-Шаги FSM:
-  name → age → gender → city → bio → pref_gender → pref_min_age → pref_max_age → photo
-"""
 from __future__ import annotations
 
 import io

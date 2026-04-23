@@ -1,13 +1,3 @@
-"""
-Этап 3 — лента анкет: просмотр, лайк/пропуск, мэтчи.
-
-Поток:
-  1. "👀 Смотреть анкеты" → get_next_profile_id (Redis кэш или БД)
-  2. Показываем анкету + кнопки [❤️ Лайк] [👎 Пропустить]
-  3. На лайк/скип → record_interaction → если мэтч → уведомляем обоих
-  4. Автоматически показываем следующую анкету
-  5. "💬 Мои мэтчи" → список мэтчей
-"""
 from __future__ import annotations
 
 import logging
@@ -27,11 +17,6 @@ from app.modules import matching as matching_module
 
 logger = logging.getLogger(__name__)
 router = Router()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 async def _get_user_by_tg(tg_id: int, session: AsyncSession) -> User | None:
     return await session.scalar(select(User).where(User.telegram_id == tg_id))
@@ -89,9 +74,6 @@ async def _show_profile(
         await message.answer(text, parse_mode="Markdown", reply_markup=kb)
 
 
-# ---------------------------------------------------------------------------
-# Browse feed
-# ---------------------------------------------------------------------------
 
 @router.message(StateFilter(default_state), F.text == "👀 Смотреть анкеты")
 async def cmd_browse(
@@ -122,10 +104,6 @@ async def cmd_browse(
     await _show_profile(message, next_id, session)
 
 
-# ---------------------------------------------------------------------------
-# Like / Skip callback
-# ---------------------------------------------------------------------------
-
 @router.callback_query(FeedAction.filter())
 async def handle_feed_action(
     callback: CallbackQuery,
@@ -149,7 +127,6 @@ async def handle_feed_action(
 
     match = await matching_module.record_interaction(user.id, target_id, action, session)
 
-    # Загружаем нужные данные
     target_user = await session.scalar(select(User).where(User.id == target_id))
     target_profile = await session.scalar(
         select(Profile).where(Profile.user_id == target_id)
@@ -161,14 +138,12 @@ async def handle_feed_action(
     their_name = target_profile.name if target_profile else "Кто-то"
 
     if action == "like":
-        # Формируем ссылки: @username если есть, иначе deep-link по ID
         def _link(name: str, username: str | None, tg_id_val: int) -> str:
             if username:
                 return f"[@{username}](https://t.me/{username})"
             return f"[{name}](tg://user?id={tg_id_val})"
 
         if match:
-            # ── Взаимный лайк → мэтч ──────────────────────────────────────
             their_link = _link(their_name, target_user.username if target_user else None,
                                target_user.telegram_id if target_user else 0)
             my_link = _link(my_name, user.username, tg_id)
@@ -192,7 +167,6 @@ async def handle_feed_action(
                         target_user.telegram_id,
                     )
         else:
-            # ── Обычный лайк → показываем анкету лайкнувшего + кнопки ────
             if target_user:
                 try:
                     card_text, card_photo = await _build_profile_card(user.id, session)
@@ -222,7 +196,6 @@ async def handle_feed_action(
 
     await callback.answer("❤️ Лайк!" if action == "like" else "👎 Пропуск")
 
-    # Диспетчеризация задачи пересчёта рейтинга через Celery (если action == like)
     if action == "like":
         try:
             from tasks import recalculate_user_rating
@@ -230,7 +203,6 @@ async def handle_feed_action(
         except Exception:
             logger.debug("Celery not available, skipping async rating update")
 
-    # Показываем следующую анкету
     next_id = await matching_module.get_next_profile_id(user.id, session, redis)
     if not next_id:
         await callback.message.answer(
@@ -241,10 +213,6 @@ async def handle_feed_action(
 
     await _show_profile(callback.message, next_id, session)
 
-
-# ---------------------------------------------------------------------------
-# Matches list
-# ---------------------------------------------------------------------------
 
 @router.message(StateFilter(default_state), F.text == "💬 Мои мэтчи")
 async def show_matches(message: Message, session: AsyncSession) -> None:
@@ -281,7 +249,6 @@ async def show_matches(message: Message, session: AsyncSession) -> None:
         if not partner_profile or not partner_user:
             continue
 
-        # Ссылка: @username если есть, иначе deep-link по telegram_id
         if partner_user.username:
             contact = f"[@{partner_user.username}](https://t.me/{partner_user.username})"
         else:
