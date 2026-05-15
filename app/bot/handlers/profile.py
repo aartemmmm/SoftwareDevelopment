@@ -25,6 +25,7 @@ class EditStates(StatesGroup):
     age = State()
     city = State()
     bio = State()
+    interests = State()
     pref_min_age = State()
     pref_max_age = State()
     pref_gender = State()
@@ -116,12 +117,13 @@ async def dispatch_edit(
     await callback.answer()
 
     prompts = {
-        "name": ("Введи новое имя:", EditStates.name),
-        "age": ("Введи новый возраст (18–99):", EditStates.age),
-        "city": ("Введи новый город (или пропусти):", EditStates.city),
-        "bio": ("Напиши о себе (или пропусти):", EditStates.bio),
-        "prefs": ("Кого ищешь?", EditStates.pref_gender),
-        "photo": ("Отправь новое фото:", EditStates.photo),
+        "name":      ("Введи новое имя:", EditStates.name),
+        "age":       ("Введи новый возраст (18–99):", EditStates.age),
+        "city":      ("Введи новый город (или пропусти):", EditStates.city),
+        "bio":       ("Напиши о себе (или пропусти):", EditStates.bio),
+        "interests": ("🎯 Укажи интересы через запятую (или пропусти):", EditStates.interests),
+        "prefs":     ("Кого ищешь?", EditStates.pref_gender),
+        "photo":     ("Отправь новое фото:", EditStates.photo),
     }
 
     if field not in prompts:
@@ -129,7 +131,7 @@ async def dispatch_edit(
 
     text, next_state = prompts[field]
     reply_markup = None
-    if field in ("city", "bio", "photo"):
+    if field in ("city", "bio", "interests", "photo"):
         reply_markup = skip_kb()
     elif field == "prefs":
         reply_markup = preferred_gender_kb()
@@ -244,6 +246,38 @@ async def edit_bio(message: Message, state: FSMContext, session: AsyncSession) -
 
 @router.callback_query(EditStates.bio, F.data == "skip_step")
 async def skip_edit_bio(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await state.clear()
+    if callback.message:
+        await callback.message.answer("Изменение отменено.")
+
+
+# ---------------------------------------------------------------------------
+# Edit interests
+# ---------------------------------------------------------------------------
+
+@router.message(EditStates.interests)
+async def edit_interests(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    text = (message.text or "").strip()
+    user = await _get_user(message.from_user.id, session)
+    if not user:
+        await state.clear()
+        return
+
+    profile = await session.scalar(select(Profile).where(Profile.user_id == user.id))
+    if profile:
+        profile.interests = text[:500] if text else None
+        await session.flush()
+        await rating_module.recalculate_rating(user.id, session)
+
+    await state.clear()
+    await message.answer("✅ Интересы обновлены.")
+
+
+@router.callback_query(EditStates.interests, F.data == "skip_step")
+async def skip_edit_interests(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
     await state.clear()
     if callback.message:

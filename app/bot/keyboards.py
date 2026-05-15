@@ -102,6 +102,9 @@ def edit_profile_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="🎯 Интересы", callback_data=EditField(field="interests").pack()
+                ),
+                InlineKeyboardButton(
                     text="⚙️ Предпочтения", callback_data=EditField(field="prefs").pack()
                 ),
             ],

@@ -1,3 +1,15 @@
+"""
+Feed handler — browse profiles, like / skip, match notifications.
+
+Event flow (every like / skip):
+  handler
+    ├── matching.record_interaction()          DB write (interaction + maybe match)
+    ├── event_bus.publish_like/skip/match()   → RabbitMQ 'dating_events' exchange
+    │       └── analytics consumer reads it   (real-time counters, hourly patterns)
+    ├── events.publish_like/skip/match()      → Celery via RabbitMQ
+    │       └── worker: rating recalc + DB event log
+    └── events.publish_warm_cache()            prefetch next batch for this user
+"""
 from __future__ import annotations
 
 import logging
@@ -8,15 +20,22 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.state import default_state
 from aiogram.types import CallbackQuery, Message
 from redis.asyncio import Redis
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards import FeedAction, feed_action_kb, main_menu_kb
-from app.db.models import Match, Photo, Preferences, Profile, Rating, User
+from app.db.models import Match, Photo, Profile, Rating, User
+from app.modules import event_bus
+from app.modules import events as event_celery
 from app.modules import matching as matching_module
+from app.modules.metrics import increment_event, mark_user_active, record_hourly_activity
+from app.services.notifications import NotificationService
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _get_user_by_tg(tg_id: int, session: AsyncSession) -> User | None:
     return await session.scalar(select(User).where(User.telegram_id == tg_id))
@@ -25,9 +44,7 @@ async def _get_user_by_tg(tg_id: int, session: AsyncSession) -> User | None:
 async def _build_profile_card(
     target_user_id: uuid.UUID, session: AsyncSession
 ) -> tuple[str, str | None]:
-    """
-    Возвращает (текст_карточки, tg_file_id | None).
-    """
+    """Return (card_text, tg_file_id | None)."""
     profile = await session.scalar(
         select(Profile).where(Profile.user_id == target_user_id)
     )
@@ -49,6 +66,8 @@ async def _build_profile_card(
         lines.append(f"🏙 {profile.city}")
     if profile.bio:
         lines.append(f"📝 {profile.bio}")
+    if profile.interests:
+        lines.append(f"🎯 {profile.interests}")
     if rating:
         lines.append(f"\n⭐ Рейтинг: {rating.final_score:.1f}")
 
@@ -65,15 +84,13 @@ async def _show_profile(
 
     if tg_file_id:
         await message.answer_photo(
-            photo=tg_file_id,
-            caption=text,
-            parse_mode="Markdown",
-            reply_markup=kb,
+            photo=tg_file_id, caption=text, parse_mode="Markdown", reply_markup=kb
         )
     else:
         await message.answer(text, parse_mode="Markdown", reply_markup=kb)
 
 
+# ── Browse ────────────────────────────────────────────────────────────────────
 
 @router.message(StateFilter(default_state), F.text == "👀 Смотреть анкеты")
 async def cmd_browse(
@@ -93,16 +110,19 @@ async def cmd_browse(
         await message.answer("Сначала заполни анкету через /start")
         return
 
+    await mark_user_active(user.id, redis)
+
     next_id = await matching_module.get_next_profile_id(user.id, session, redis)
     if not next_id:
         await message.answer(
-            "😔 Анкеты закончились. Попробуй позже!",
-            reply_markup=main_menu_kb(),
+            "😔 Анкеты закончились. Попробуй позже!", reply_markup=main_menu_kb()
         )
         return
 
     await _show_profile(message, next_id, session)
 
+
+# ── Like / Skip ───────────────────────────────────────────────────────────────
 
 @router.callback_query(FeedAction.filter())
 async def handle_feed_action(
@@ -122,97 +142,72 @@ async def handle_feed_action(
         await callback.answer("Сначала зарегистрируйся.", show_alert=True)
         return
 
-    action = callback_data.action
+    action    = callback_data.action
     target_id = uuid.UUID(callback_data.target_id)
 
     match = await matching_module.record_interaction(user.id, target_id, action, session)
 
-    target_user = await session.scalar(select(User).where(User.id == target_id))
-    target_profile = await session.scalar(
-        select(Profile).where(Profile.user_id == target_id)
-    )
-    my_profile = await session.scalar(
-        select(Profile).where(Profile.user_id == user.id)
-    )
-    my_name = my_profile.name if my_profile else "Кто-то"
-    their_name = target_profile.name if target_profile else "Кто-то"
+    # ── Resolve parties for notifications ────────────────────────────────────
+    target_user    = await session.scalar(select(User).where(User.id == target_id))
+    target_profile = await session.scalar(select(Profile).where(Profile.user_id == target_id))
+    my_profile     = await session.scalar(select(Profile).where(Profile.user_id == user.id))
 
-    if action == "like":
-        def _link(name: str, username: str | None, tg_id_val: int) -> str:
-            if username:
-                return f"[@{username}](https://t.me/{username})"
-            return f"[{name}](tg://user?id={tg_id_val})"
+    notifier = NotificationService(bot)
 
+    # ── Notifications via dedicated service ──────────────────────────────────
+    if action == "like" and target_user and target_profile and my_profile:
         if match:
-            their_link = _link(their_name, target_user.username if target_user else None,
-                               target_user.telegram_id if target_user else 0)
-            my_link = _link(my_name, user.username, tg_id)
-
-            await callback.message.answer(
-                f"🎉 Мэтч! *{their_name}* тоже лайкнул(а) тебя!\n"
-                f"Написать: {their_link}",
-                parse_mode="Markdown",
+            await notifier.notify_match(
+                actor=user,
+                actor_profile=my_profile,
+                partner=target_user,
+                partner_profile=target_profile,
             )
-            if target_user:
-                try:
-                    await bot.send_message(
-                        chat_id=target_user.telegram_id,
-                        text=f"🎉 Мэтч! *{my_name}* лайкнул(а) тебя!\n"
-                             f"Написать: {my_link}",
-                        parse_mode="Markdown",
-                    )
-                except Exception:
-                    logger.warning(
-                        "Could not send match notification to user %s",
-                        target_user.telegram_id,
-                    )
         else:
-            if target_user:
-                try:
-                    card_text, card_photo = await _build_profile_card(user.id, session)
-                    notify_text = f"💝 *{my_name}* лайкнул(а) тебя!\n\n{card_text}"
-                    notify_kb = feed_action_kb(user.id)   # кнопки с ID лайкнувшего
-
-                    if card_photo:
-                        await bot.send_photo(
-                            chat_id=target_user.telegram_id,
-                            photo=card_photo,
-                            caption=notify_text,
-                            parse_mode="Markdown",
-                            reply_markup=notify_kb,
-                        )
-                    else:
-                        await bot.send_message(
-                            chat_id=target_user.telegram_id,
-                            text=notify_text,
-                            parse_mode="Markdown",
-                            reply_markup=notify_kb,
-                        )
-                except Exception:
-                    logger.warning(
-                        "Could not send like notification to user %s",
-                        target_user.telegram_id,
-                    )
+            await notifier.notify_like(
+                liker=user,
+                liker_profile=my_profile,
+                liked_user=target_user,
+                session=session,
+            )
 
     await callback.answer("❤️ Лайк!" if action == "like" else "👎 Пропуск")
 
+    # ── Publish to RabbitMQ event bus (analytics consumer) ───────────────────
     if action == "like":
-        try:
-            from tasks import recalculate_user_rating
-            recalculate_user_rating.delay(str(target_id))
-        except Exception:
-            logger.debug("Celery not available, skipping async rating update")
+        await event_bus.publish_like(user.id, target_id)
+        if match:
+            await event_bus.publish_match(user.id, target_id)
+    else:
+        await event_bus.publish_skip(user.id, target_id)
 
+    # ── Publish Celery tasks (rating recalc, cache warm, DB logging) ─────────
+    if action == "like":
+        event_celery.publish_like_event(user.id, target_id)
+        if match:
+            event_celery.publish_match_event(user.id, target_id)
+    else:
+        event_celery.publish_skip_event(user.id, target_id)
+
+    event_celery.publish_warm_cache(user.id)
+
+    # ── Update real-time Redis metrics ────────────────────────────────────────
+    await increment_event(action, redis)
+    await record_hourly_activity(action, redis)
+    await mark_user_active(user.id, redis)
+
+    # ── Show next profile ─────────────────────────────────────────────────────
     next_id = await matching_module.get_next_profile_id(user.id, session, redis)
     if not next_id:
         await callback.message.answer(
-            "😔 Анкеты закончились. Попробуй позже!",
-            reply_markup=main_menu_kb(),
+            "😔 Анкеты закончились. Попробуй позже!", reply_markup=main_menu_kb()
         )
         return
 
     await _show_profile(callback.message, next_id, session)
 
+
+# ── My matches ────────────────────────────────────────────────────────────────
 
 @router.message(StateFilter(default_state), F.text == "💬 Мои мэтчи")
 async def show_matches(message: Message, session: AsyncSession) -> None:
@@ -238,14 +233,12 @@ async def show_matches(message: Message, session: AsyncSession) -> None:
         return
 
     lines = ["💬 *Твои мэтчи:*\n"]
-    for i, match in enumerate(matches, 1):
-        partner_id = match.user2_id if match.user1_id == user.id else match.user1_id
+    for i, m in enumerate(matches, 1):
+        partner_id = m.user2_id if m.user1_id == user.id else m.user1_id
         partner_profile = await session.scalar(
             select(Profile).where(Profile.user_id == partner_id)
         )
-        partner_user = await session.scalar(
-            select(User).where(User.id == partner_id)
-        )
+        partner_user = await session.scalar(select(User).where(User.id == partner_id))
         if not partner_profile or not partner_user:
             continue
 

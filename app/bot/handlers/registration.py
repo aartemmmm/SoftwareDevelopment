@@ -31,6 +31,7 @@ class RegStates(StatesGroup):
     gender = State()
     city = State()
     bio = State()
+    interests = State()
     pref_gender = State()
     pref_min_age = State()
     pref_max_age = State()
@@ -171,13 +172,40 @@ async def skip_city(callback: CallbackQuery, state: FSMContext) -> None:
 async def reg_bio(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     await state.update_data(bio=text[:500] if text else None)
-    await message.answer("🔍 Кого ищешь?", reply_markup=preferred_gender_kb())
-    await state.set_state(RegStates.pref_gender)
+    await message.answer(
+        "🎯 Укажи свои интересы через запятую\n(например: кино, спорт, путешествия):",
+        reply_markup=skip_kb(),
+    )
+    await state.set_state(RegStates.interests)
 
 
 @router.callback_query(RegStates.bio, F.data == "skip_step")
 async def skip_bio(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(bio=None)
+    await callback.answer()
+    if callback.message:
+        await callback.message.answer(
+            "🎯 Укажи свои интересы через запятую\n(или пропусти):",
+            reply_markup=skip_kb(),
+        )
+    await state.set_state(RegStates.interests)
+
+
+# ---------------------------------------------------------------------------
+# interests
+# ---------------------------------------------------------------------------
+
+@router.message(RegStates.interests)
+async def reg_interests(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    await state.update_data(interests=text[:500] if text else None)
+    await message.answer("🔍 Кого ищешь?", reply_markup=preferred_gender_kb())
+    await state.set_state(RegStates.pref_gender)
+
+
+@router.callback_query(RegStates.interests, F.data == "skip_step")
+async def skip_interests(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.update_data(interests=None)
     await callback.answer()
     if callback.message:
         await callback.message.answer("🔍 Кого ищешь?", reply_markup=preferred_gender_kb())
@@ -302,6 +330,7 @@ async def _finish_registration(
         profile.gender = data["gender"]
         profile.city = data.get("city")
         profile.bio = data.get("bio")
+        profile.interests = data.get("interests")
     else:
         profile = Profile(
             user_id=user.id,
@@ -310,6 +339,7 @@ async def _finish_registration(
             gender=data["gender"],
             city=data.get("city"),
             bio=data.get("bio"),
+            interests=data.get("interests"),
         )
         session.add(profile)
 
