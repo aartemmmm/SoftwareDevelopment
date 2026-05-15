@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sql_isolation_pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Artem2502
+      POSTGRES_DB: isolation_lab
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./:/workspace/sql_isolation
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d isolation_lab"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
